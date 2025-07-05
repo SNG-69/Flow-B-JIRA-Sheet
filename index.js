@@ -1,4 +1,3 @@
-console.log("🔑 REDIS_URL:", process.env.REDIS_URL);
 const express = require("express");
 const { google } = require("googleapis");
 const { Queue, Worker } = require("bullmq");
@@ -7,8 +6,8 @@ const fieldMap = require("./fieldMap");
 const app = express();
 app.use(express.json());
 
-const SHEET_ID = process.env.SHEET_ID;
-const SHEET_NAME = process.env.SHEET_NAME;
+const SHEET_ID = "1XMdC59_ERNFTSesiQ3Tsqgh0aRsvMrru7sZVdIX5lcs";
+const SHEET_NAME = "Shopify_Order_Data";
 
 const auth = new google.auth.GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
@@ -16,14 +15,20 @@ const auth = new google.auth.GoogleAuth({
 });
 const sheets = google.sheets({ version: "v4", auth });
 
-// Debug Redis URL
-console.log("🔑 Using Redis URL:", process.env.REDIS_URL);
+// Log Redis connection info
+console.log("🔑 Redis config:", {
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
+  password: process.env.REDIS_PASSWORD ? "***" : "(not set)"
+});
 
 // Redis connection config
 const connection = {
-  url: process.env.REDIS_URL,
+  host: process.env.REDIS_HOST,
+  port: parseInt(process.env.REDIS_PORT, 10),
+  password: process.env.REDIS_PASSWORD,
   maxRetriesPerRequest: null,
-  tls: {}  // ✅ Needed for Redis Cloud (rediss://)
+  tls: {} // Required for Redis Cloud (rediss://)
 };
 
 // BullMQ queue
