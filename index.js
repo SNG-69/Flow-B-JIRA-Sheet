@@ -15,11 +15,11 @@ const auth = new google.auth.GoogleAuth({
 });
 const sheets = google.sheets({ version: "v4", auth });
 
-// Log Redis connection info
-console.log("🔑 Redis config:", {
+// Debug Redis config
+console.log("🔑 Redis config", {
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
-  password: process.env.REDIS_PASSWORD ? "***" : "(not set)"
+  password: !!process.env.REDIS_PASSWORD
 });
 
 // Redis connection config
@@ -28,7 +28,7 @@ const connection = {
   port: parseInt(process.env.REDIS_PORT, 10),
   password: process.env.REDIS_PASSWORD,
   maxRetriesPerRequest: null,
-  tls: {} // Required for Redis Cloud (rediss://)
+  tls: {}  // Ensures SSL/TLS connection
 };
 
 // BullMQ queue
