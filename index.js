@@ -15,20 +15,21 @@ const auth = new google.auth.GoogleAuth({
 });
 const sheets = google.sheets({ version: "v4", auth });
 
-// REDIS connection config
+// Debug Redis URL
+console.log("🔑 Using Redis URL:", process.env.REDIS_URL);
+
+// Redis connection config
 const connection = {
-  url: process.env.REDIS_URL, // Set this in Render env vars!
+  url: process.env.REDIS_URL,  // Make sure REDIS_URL is set in Render env vars
   maxRetriesPerRequest: null
 };
 
 // BullMQ queue
 const updateQueue = new Queue("jira-flow-b", { connection });
 
-// Helper to clean value
+// Helper: clean field value
 function getCleanValue(fieldId, rawValue) {
   if (!rawValue) return "";
-  const type = fieldMap[fieldId]?.type;
-
   if (Array.isArray(rawValue)) {
     return rawValue.map(v => v.value || "").join(", ");
   }
@@ -38,7 +39,7 @@ function getCleanValue(fieldId, rawValue) {
   return rawValue;
 }
 
-// Helper to update sheet
+// Helper: update Google Sheet
 async function updateSheet(rowNumber, updates) {
   for (const update of updates) {
     await sheets.spreadsheets.values.update({
@@ -50,18 +51,18 @@ async function updateSheet(rowNumber, updates) {
   }
 }
 
-// POST endpoint — enqueue jobs
+// POST: add job to queue
 app.post("/jira-flow-b", async (req, res) => {
   try {
     await updateQueue.add("update-job", req.body);
     res.status(200).send("Job queued");
   } catch (err) {
-    console.error("❌ Error adding job to queue:", err);
+    console.error("❌ Failed to queue job:", err);
     res.status(500).send("Failed to queue job");
   }
 });
 
-// Worker to process jobs
+// Worker: process jobs
 new Worker(
   "jira-flow-b",
   async job => {
@@ -106,8 +107,7 @@ new Worker(
       const colIndex = headers.indexOf(config.header);
       if (colIndex === -1) continue;
 
-      const rawValue = fields[fieldId];
-      const cleanValue = getCleanValue(fieldId, rawValue);
+      const cleanValue = getCleanValue(fieldId, fields[fieldId]);
       const colLetter = getColumnLetter(colIndex + 1);
 
       updates.push({
@@ -122,7 +122,7 @@ new Worker(
   { connection }
 );
 
-// Column letter helper
+// Helper: convert column index to letter
 function getColumnLetter(colNum) {
   let letter = "";
   while (colNum > 0) {
