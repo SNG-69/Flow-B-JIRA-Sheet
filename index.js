@@ -1,3 +1,4 @@
+console.log("🔑 REDIS_URL:", process.env.REDIS_URL);
 const express = require("express");
 const { google } = require("googleapis");
 const { Queue, Worker } = require("bullmq");
