@@ -15,16 +15,6 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
-// Helper: convert column index (0-based) to letter(s), e.g. 0 -> A, 26 -> AA
-function columnToLetter(col) {
-  let letter = "";
-  while (col >= 0) {
-    letter = String.fromCharCode((col % 26) + 65) + letter;
-    col = Math.floor(col / 26) - 1;
-  }
-  return letter;
-}
-
 function getCleanValue(fieldId, rawValue) {
   if (!rawValue) return "";
   const type = fieldMap[fieldId]?.type;
@@ -34,19 +24,37 @@ function getCleanValue(fieldId, rawValue) {
   }
 
   if (typeof rawValue === "object") {
+    if (type === "multi" || type === "single") {
+      return rawValue.value || "";
+    }
     return rawValue.value || "";
   }
 
   return rawValue;
 }
 
-async function updateSheet(updates) {
-  for (const req of updates) {
+// 👉 NEW: String cleaner to normalize summary/order numbers
+function cleanString(str) {
+  return (str || "")
+    .replace(/\u200B/g, "")      // Remove zero-width spaces
+    .replace(/\u00A0/g, "")      // Remove non-breaking spaces
+    .replace(/\s+/g, " ")        // Replace multiple spaces with single space
+    .trim()                      // Trim leading/trailing spaces
+    .toUpperCase();              // Make case-insensitive (optional)
+}
+
+async function updateSheet(rowNumber, updates) {
+  const requests = updates.map(update => ({
+    range: update.range,
+    values: [[update.value]]
+  }));
+
+  for (const req of requests) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: req.range,
       valueInputOption: "RAW",
-      requestBody: { values: [[req.value]] }
+      requestBody: { values: req.values }
     });
   }
 }
@@ -55,7 +63,8 @@ app.post("/jira-flow-b", async (req, res) => {
   try {
     const issue = req.body.issue;
     const fields = issue.fields;
-    const summary = (fields.summary || "").trim();
+    const summary = (fields.summary || "");
+    const cleanSummary = cleanString(summary);
 
     const headerResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
@@ -72,7 +81,8 @@ app.post("/jira-flow-b", async (req, res) => {
     let rowNumber = null;
     if (rows) {
       for (let i = 0; i < rows.length; i++) {
-        if ((rows[i][0] || "").trim() === summary) {
+        const cellValue = cleanString(rows[i][0]);
+        if (cellValue === cleanSummary) {
           rowNumber = i + 2;
           break;
         }
@@ -97,19 +107,18 @@ app.post("/jira-flow-b", async (req, res) => {
       const rawValue = fields[fieldId];
       const cleanValue = getCleanValue(fieldId, rawValue);
 
-      const colLetter = columnToLetter(colIndex);
       updates.push({
-        range: `${SHEET_NAME}!${colLetter}${rowNumber}`,
+        range: `${SHEET_NAME}!${String.fromCharCode(65 + colIndex)}${rowNumber}`,
         value: cleanValue
       });
     }
 
-    await updateSheet(updates);
+    await updateSheet(rowNumber, updates);
 
     console.log(`✅ Updated row ${rowNumber} for issue ${summary}`);
     res.status(200).send("OK");
   } catch (err) {
-    console.error("❌ Error processing webhook:", err.message || err);
+    console.error("❌ Error processing webhook:", err);
     res.status(500).send("Internal Server Error");
   }
 });
