@@ -6,32 +6,26 @@ const fieldMap = require("./fieldMap");
 const app = express();
 app.use(express.json());
 
-const SHEET_ID = "1XMdC59_ERNFTSesiQ3Tsqgh0aRsvMrru7sZVdIX5lcs";
-const SHEET_NAME = "Shopify_Order_Data";
+const SHEET_ID = process.env.SHEET_ID;
+const SHEET_NAME = process.env.SHEET_NAME;
 
+// Google Sheets auth
 const auth = new google.auth.GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   keyFile: "/etc/secrets/credentials.json"
 });
 const sheets = google.sheets({ version: "v4", auth });
 
-// Debug Redis config
-console.log("🔑 Redis config", {
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-  password: !!process.env.REDIS_PASSWORD
-});
-
-// Redis connection config
+// Redis connection config (no TLS, no rediss)
 const connection = {
-  host: process.env.REDIS_HOST,
-  port: parseInt(process.env.REDIS_PORT, 10),
+  host: "redis-18864.c82.us-east-1-2.ec2.redns.redis-cloud.com",
+  port: 18864,
+  username: "default",
   password: process.env.REDIS_PASSWORD,
-  maxRetriesPerRequest: null,
-  tls: {}  // Ensures SSL/TLS connection
+  maxRetriesPerRequest: null
 };
 
-// BullMQ queue
+// Queue
 const updateQueue = new Queue("jira-flow-b", { connection });
 
 // Helper: clean field value
