@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import fs from "fs";
 import { FIELD_MAP } from "./fieldMap.js";
 
-// ✅ Updated path for Render secret file
+// ✅ Use secret file path for Render
 const creds = JSON.parse(fs.readFileSync("/etc/secrets/credentials.json", "utf8"));
 
 const app = express();
@@ -24,33 +24,51 @@ app.post("/jira-flow-b", async (req, res) => {
     const fields = issue.fields;
     const summary = fields.summary;
 
-    const result = await sheets.spreadsheets.values.get({
+    // Step 1: Find the matching row based on the summary (Column A)
+    const dataRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A2:A1000`,
     });
 
-    const rows = result.data.values;
+    const rows = dataRes.data.values || [];
     const rowIndex = rows.findIndex(row => row[0] === summary);
-
     if (rowIndex === -1) return res.status(200).send("Row not found.");
     const rowNumber = rowIndex + 2;
 
-    const updates = Object.keys(FIELD_MAP).map((fieldId, i) => ({
-      range: `${SHEET_NAME}!${String.fromCharCode(86 + i)}${rowNumber}`, // V onwards
-      values: [[fields[fieldId] || ""]],
-    }));
-
-    await sheets.spreadsheets.values.batchUpdate({
+    // Step 2: Get the header row (Row 1) to find where to write
+    const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      requestBody: {
-        valueInputOption: "RAW",
-        data: updates,
-      },
+      range: `${SHEET_NAME}!A1:AL1`,
     });
+    const headers = headerRes.data.values[0];
 
-    res.status(200).send("Updated custom fields successfully.");
+    // Step 3: Prepare custom field updates
+    const updates = [];
+
+    for (const [fieldId, columnHeader] of Object.entries(FIELD_MAP)) {
+      const colIndex = headers.indexOf(columnHeader);
+      if (colIndex !== -1) {
+        updates.push({
+          range: `${SHEET_NAME}!${columnToLetter(colIndex + 1)}${rowNumber}`,
+          values: [[fields[fieldId] || ""]],
+        });
+      }
+    }
+
+    // Step 4: Apply the updates
+    if (updates.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          valueInputOption: "RAW",
+          data: updates,
+        },
+      });
+    }
+
+    res.status(200).send("Custom fields updated successfully.");
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error("Webhook Error:", err.message);
     res.status(500).send("Internal server error.");
   }
 });
@@ -59,3 +77,14 @@ app.get("/", (req, res) => res.send("Flow B live"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+
+// Helper to convert 1-based index to column letters (e.g., 1 → A, 27 → AA)
+function columnToLetter(col) {
+  let temp = "";
+  while (col > 0) {
+    let rem = (col - 1) % 26;
+    temp = String.fromCharCode(65 + rem) + temp;
+    col = Math.floor((col - 1) / 26);
+  }
+  return temp;
+}
