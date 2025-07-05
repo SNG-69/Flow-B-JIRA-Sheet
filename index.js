@@ -1,17 +1,20 @@
+// index.js
 import express from "express";
 import { google } from "googleapis";
+import fs from "fs";
 import { FIELD_MAP } from "./fieldMap.js";
-import creds from "./credentials.json" assert { type: "json" };
+
+const creds = JSON.parse(fs.readFileSync("./credentials.json", "utf8"));
 
 const app = express();
 app.use(express.json());
 
-const SHEET_ID = "your_google_sheet_id";
-const SHEET_NAME = "Shopify_Order_Data";
+const SHEET_ID = process.env.SHEET_ID;
+const SHEET_NAME = process.env.SHEET_NAME || "Shopify_Order_Data";
 
 const auth = new google.auth.GoogleAuth({
   credentials: creds,
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 const sheets = google.sheets({ version: "v4", auth });
 
@@ -21,6 +24,7 @@ app.post("/jira-flow-b", async (req, res) => {
     const fields = issue.fields;
     const summary = fields.summary;
 
+    // Read column A (order IDs or summary) to find matching row
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A2:A1000`,
@@ -32,8 +36,9 @@ app.post("/jira-flow-b", async (req, res) => {
     if (rowIndex === -1) return res.status(200).send("Row not found.");
     const rowNumber = rowIndex + 2;
 
+    // Prepare updates from custom fields
     const updates = Object.keys(FIELD_MAP).map((fieldId, i) => ({
-      range: `${SHEET_NAME}!${String.fromCharCode(86 + i)}${rowNumber}`,
+      range: `${SHEET_NAME}!${String.fromCharCode(86 + i)}${rowNumber}`, // V, W, X...
       values: [[fields[fieldId] || ""]],
     }));
 
@@ -52,7 +57,8 @@ app.post("/jira-flow-b", async (req, res) => {
   }
 });
 
+// Debug route
 app.get("/", (req, res) => res.send("Flow B live"));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Listening on ${PORT}`));
+app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
