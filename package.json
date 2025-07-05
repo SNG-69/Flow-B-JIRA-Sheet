@@ -1,12 +1,14 @@
 {
   "name": "flow-b-jira-to-sheets",
   "version": "1.0.0",
+  "description": "Jira to Google Sheets integration with Redis queue using BullMQ",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "googleapis": "^105.0.0"
+    "googleapis": "^105.0.0",
+    "bullmq": "^4.0.0"
   }
 }
