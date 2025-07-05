@@ -15,6 +15,17 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
+// Helper to convert column index to column letter (A, B, ..., Z, AA, AB, etc.)
+function columnToLetter(col) {
+  let letter = '';
+  while (col >= 0) {
+    letter = String.fromCharCode((col % 26) + 65) + letter;
+    col = Math.floor(col / 26) - 1;
+  }
+  return letter;
+}
+
+// Helper to clean values
 function getCleanValue(fieldId, rawValue) {
   if (!rawValue) return "";
   const type = fieldMap[fieldId]?.type;
@@ -24,71 +35,56 @@ function getCleanValue(fieldId, rawValue) {
   }
 
   if (typeof rawValue === "object") {
-    if (type === "multi" || type === "single") {
-      return rawValue.value || "";
-    }
     return rawValue.value || "";
   }
 
   return rawValue;
 }
 
-// 👉 NEW: String cleaner to normalize summary/order numbers
-function cleanString(str) {
-  return (str || "")
-    .replace(/\u200B/g, "")      // Remove zero-width spaces
-    .replace(/\u00A0/g, "")      // Remove non-breaking spaces
-    .replace(/\s+/g, " ")        // Replace multiple spaces with single space
-    .trim()                      // Trim leading/trailing spaces
-    .toUpperCase();              // Make case-insensitive (optional)
-}
-
+// Update multiple fields
 async function updateSheet(rowNumber, updates) {
-  const requests = updates.map(update => ({
-    range: update.range,
-    values: [[update.value]]
-  }));
-
-  for (const req of requests) {
+  for (const update of updates) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: req.range,
+      range: update.range,
       valueInputOption: "RAW",
-      requestBody: { values: req.values }
+      requestBody: { values: [[update.value]] }
     });
   }
 }
 
+// Main webhook handler
 app.post("/jira-flow-b", async (req, res) => {
   try {
     const issue = req.body.issue;
     const fields = issue.fields;
-    const summary = (fields.summary || "");
-    const cleanSummary = cleanString(summary);
+    const summary = (fields.summary || "").replace(/\s+/g, " ").trim();
 
+    // Get headers
     const headerResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A1:AZ1`
     });
     const headers = headerResp.data.values[0];
 
+    // Get order numbers (column A)
     const dataResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A2:A30000`
     });
-    const rows = dataResp.data.values;
+    const rows = dataResp.data.values || [];
 
+    // Find matching row (ignoring extra spaces)
     let rowNumber = null;
-    if (rows) {
-      for (let i = 0; i < rows.length; i++) {
-        const cellValue = cleanString(rows[i][0]);
-        if (cellValue === cleanSummary) {
-          rowNumber = i + 2;
-          break;
-        }
+    for (let i = 0; i < rows.length; i++) {
+      const existing = (rows[i][0] || "").replace(/\s+/g, " ").trim();
+      if (existing === summary) {
+        rowNumber = i + 2;
+        break;
       }
     }
 
+    // If not found, append a new row
     if (!rowNumber) {
       rowNumber = rows.length + 2;
       await sheets.spreadsheets.values.append({
@@ -99,16 +95,16 @@ app.post("/jira-flow-b", async (req, res) => {
       });
     }
 
+    // Prepare updates
     const updates = [];
     for (const [fieldId, config] of Object.entries(fieldMap)) {
       const colIndex = headers.indexOf(config.header);
       if (colIndex === -1) continue;
 
-      const rawValue = fields[fieldId];
-      const cleanValue = getCleanValue(fieldId, rawValue);
-
+      const cleanValue = getCleanValue(fieldId, fields[fieldId]);
+      const colLetter = columnToLetter(colIndex);
       updates.push({
-        range: `${SHEET_NAME}!${String.fromCharCode(65 + colIndex)}${rowNumber}`,
+        range: `${SHEET_NAME}!${colLetter}${rowNumber}`,
         value: cleanValue
       });
     }
