@@ -5,8 +5,8 @@ const app = express();
 
 app.use(express.json());
 
-const SHEET_ID = "YOUR_SHEET_ID";
-const SHEET_NAME = "Sheet1";
+const SHEET_ID = "1abcDXYZ1234567EfGhiJKLmNOPqRsTuVwXyZ";
+const SHEET_NAME = "Shopify_Order_Data";
 
 const auth = new google.auth.GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
