@@ -15,7 +15,6 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
-// Utility to clean value
 function getCleanValue(fieldId, rawValue) {
   if (!rawValue) return "";
   const type = fieldMap[fieldId]?.type;
@@ -31,22 +30,6 @@ function getCleanValue(fieldId, rawValue) {
   return rawValue;
 }
 
-// Normalize spaces in summary (keep special characters intact)
-function normalizeSpaces(value) {
-  return (value || "").replace(/\s+/g, "");
-}
-
-// Convert 0-based column index to Excel column letter (A, B... Z, AA... AZ)
-function columnToLetter(index) {
-  let letter = "";
-  while (index >= 0) {
-    letter = String.fromCharCode((index % 26) + 65) + letter;
-    index = Math.floor(index / 26) - 1;
-  }
-  return letter;
-}
-
-// Update specific cells
 async function updateSheet(rowNumber, updates) {
   const requests = updates.map(update => ({
     range: update.range,
@@ -63,52 +46,48 @@ async function updateSheet(rowNumber, updates) {
   }
 }
 
-// Main endpoint
 app.post("/jira-flow-b", async (req, res) => {
   try {
     const issue = req.body.issue;
     const fields = issue.fields;
-    const summary = (fields.summary || "").trim();
+    const originalSummary = (fields.summary || "").trim();
+    const normalizedSummary = originalSummary.replace(/\s+/g, "");
 
-    // Fetch headers
+    // Get headers
     const headerResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A1:AZ1`
     });
     const headers = headerResp.data.values[0];
 
-    // Fetch existing order numbers (column A)
+    // Get existing rows (Order Numbers / Summaries)
     const dataResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A2:A30000`
     });
-    const rows = dataResp.data.values;
+    const rows = dataResp.data.values || [];
 
-    // Normalize summary for comparison
-    const summaryNorm = normalizeSpaces(summary);
     let rowNumber = null;
-
-    if (rows) {
-      for (let i = 0; i < rows.length; i++) {
-        const sheetValNorm = normalizeSpaces(rows[i][0] || "");
-        if (sheetValNorm === summaryNorm) {
-          rowNumber = i + 2;
-          break;
-        }
+    for (let i = 0; i < rows.length; i++) {
+      const sheetValue = (rows[i][0] || "").replace(/\s+/g, "").trim();
+      if (sheetValue === normalizedSummary) {
+        rowNumber = i + 2;
+        break;
       }
     }
 
+    // If no match, append new row
     if (!rowNumber) {
       rowNumber = rows.length + 2;
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: `${SHEET_NAME}!A${rowNumber}`,
         valueInputOption: "RAW",
-        requestBody: { values: [[summary]] }
+        requestBody: { values: [[originalSummary]] }
       });
     }
 
-    // Prepare updates
+    // Build updates
     const updates = [];
     for (const [fieldId, config] of Object.entries(fieldMap)) {
       const colIndex = headers.indexOf(config.header);
@@ -117,7 +96,7 @@ app.post("/jira-flow-b", async (req, res) => {
       const rawValue = fields[fieldId];
       const cleanValue = getCleanValue(fieldId, rawValue);
 
-      const colLetter = columnToLetter(colIndex);
+      const colLetter = getColumnLetter(colIndex + 1);
       updates.push({
         range: `${SHEET_NAME}!${colLetter}${rowNumber}`,
         value: cleanValue
@@ -126,13 +105,23 @@ app.post("/jira-flow-b", async (req, res) => {
 
     await updateSheet(rowNumber, updates);
 
-    console.log(`✅ Updated row ${rowNumber} for issue ${summary}`);
+    console.log(`✅ Updated row ${rowNumber} for issue ${originalSummary}`);
     res.status(200).send("OK");
   } catch (err) {
     console.error("❌ Error processing webhook:", err);
     res.status(500).send("Internal Server Error");
   }
 });
+
+function getColumnLetter(colNum) {
+  let letter = "";
+  while (colNum > 0) {
+    let remainder = (colNum - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    colNum = Math.floor((colNum - 1) / 26);
+  }
+  return letter;
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
