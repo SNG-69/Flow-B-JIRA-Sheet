@@ -15,6 +15,16 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
+// Helper: convert column index (0-based) to letter(s), e.g. 0 -> A, 26 -> AA
+function columnToLetter(col) {
+  let letter = "";
+  while (col >= 0) {
+    letter = String.fromCharCode((col % 26) + 65) + letter;
+    col = Math.floor(col / 26) - 1;
+  }
+  return letter;
+}
+
 function getCleanValue(fieldId, rawValue) {
   if (!rawValue) return "";
   const type = fieldMap[fieldId]?.type;
@@ -24,30 +34,19 @@ function getCleanValue(fieldId, rawValue) {
   }
 
   if (typeof rawValue === "object") {
-    if (type === "multi") {
-      return rawValue.value || "";
-    }
-    if (type === "single") {
-      return rawValue.value || "";
-    }
     return rawValue.value || "";
   }
 
   return rawValue;
 }
 
-async function updateSheet(rowNumber, updates) {
-  const requests = updates.map(update => ({
-    range: update.range,
-    values: [[update.value]]
-  }));
-
-  for (const req of requests) {
+async function updateSheet(updates) {
+  for (const req of updates) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: req.range,
       valueInputOption: "RAW",
-      requestBody: { values: req.values }
+      requestBody: { values: [[req.value]] }
     });
   }
 }
@@ -98,18 +97,19 @@ app.post("/jira-flow-b", async (req, res) => {
       const rawValue = fields[fieldId];
       const cleanValue = getCleanValue(fieldId, rawValue);
 
+      const colLetter = columnToLetter(colIndex);
       updates.push({
-        range: `${SHEET_NAME}!${String.fromCharCode(65 + colIndex)}${rowNumber}`,
+        range: `${SHEET_NAME}!${colLetter}${rowNumber}`,
         value: cleanValue
       });
     }
 
-    await updateSheet(rowNumber, updates);
+    await updateSheet(updates);
 
     console.log(`✅ Updated row ${rowNumber} for issue ${summary}`);
     res.status(200).send("OK");
   } catch (err) {
-    console.error("❌ Error processing webhook:", err);
+    console.error("❌ Error processing webhook:", err.message || err);
     res.status(500).send("Internal Server Error");
   }
 });
