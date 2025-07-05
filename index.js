@@ -27,7 +27,7 @@ app.post("/jira-flow-b", async (req, res) => {
     // Step 1: Find the matching row based on the summary (Column A)
     const dataRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A2:A1000`,
+      range: `${SHEET_NAME}!A2:A100000`,
     });
 
     const rows = dataRes.data.values || [];
