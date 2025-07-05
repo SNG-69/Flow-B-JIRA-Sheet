@@ -31,9 +31,19 @@ function getCleanValue(fieldId, rawValue) {
   return rawValue;
 }
 
-// Utility to normalize spaces in summary for matching
+// Normalize spaces in summary (keep special characters intact)
 function normalizeSpaces(value) {
-  return (value || "").replace(/\s+/g, ""); // Remove all spaces
+  return (value || "").replace(/\s+/g, "");
+}
+
+// Convert 0-based column index to Excel column letter (A, B... Z, AA... AZ)
+function columnToLetter(index) {
+  let letter = "";
+  while (index >= 0) {
+    letter = String.fromCharCode((index % 26) + 65) + letter;
+    index = Math.floor(index / 26) - 1;
+  }
+  return letter;
 }
 
 // Update specific cells
@@ -74,7 +84,7 @@ app.post("/jira-flow-b", async (req, res) => {
     });
     const rows = dataResp.data.values;
 
-    // Normalize the summary for matching
+    // Normalize summary for comparison
     const summaryNorm = normalizeSpaces(summary);
     let rowNumber = null;
 
@@ -82,7 +92,7 @@ app.post("/jira-flow-b", async (req, res) => {
       for (let i = 0; i < rows.length; i++) {
         const sheetValNorm = normalizeSpaces(rows[i][0] || "");
         if (sheetValNorm === summaryNorm) {
-          rowNumber = i + 2; // Adjust for header
+          rowNumber = i + 2;
           break;
         }
       }
@@ -90,7 +100,6 @@ app.post("/jira-flow-b", async (req, res) => {
 
     if (!rowNumber) {
       rowNumber = rows.length + 2;
-      // Add summary in column A
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
         range: `${SHEET_NAME}!A${rowNumber}`,
@@ -99,7 +108,7 @@ app.post("/jira-flow-b", async (req, res) => {
       });
     }
 
-    // Build updates
+    // Prepare updates
     const updates = [];
     for (const [fieldId, config] of Object.entries(fieldMap)) {
       const colIndex = headers.indexOf(config.header);
@@ -108,8 +117,7 @@ app.post("/jira-flow-b", async (req, res) => {
       const rawValue = fields[fieldId];
       const cleanValue = getCleanValue(fieldId, rawValue);
 
-      // A=65, so colIndex + 65 gets us A, B, C etc.
-      const colLetter = String.fromCharCode(65 + colIndex);
+      const colLetter = columnToLetter(colIndex);
       updates.push({
         range: `${SHEET_NAME}!${colLetter}${rowNumber}`,
         value: cleanValue
