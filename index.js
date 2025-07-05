@@ -60,7 +60,7 @@ app.post("/jira-flow-b", async (req, res) => {
 
     const headerResp = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A1:AM1`
+      range: `${SHEET_NAME}!A1:AZ1`
     });
     const headers = headerResp.data.values[0];
 
