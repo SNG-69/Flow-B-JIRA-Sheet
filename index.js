@@ -16,7 +16,7 @@ const auth = new google.auth.GoogleAuth({
 });
 const sheets = google.sheets({ version: "v4", auth });
 
-// Redis connection config (no TLS, no rediss)
+// Redis connection config
 const connection = {
   host: "redis-18864.c82.us-east-1-2.ec2.redns.redis-cloud.com",
   port: 18864,
@@ -94,13 +94,8 @@ new Worker(
     }
 
     if (!rowNumber) {
-      rowNumber = rows.length + 2;
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: SHEET_ID,
-        range: `${SHEET_NAME}!A${rowNumber}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [[originalSummary]] }
-      });
+      console.log(`❌ Summary "${originalSummary}" not found in sheet. Skipping update.`);
+      return;
     }
 
     const updates = [];
