@@ -115,7 +115,11 @@ new Worker(
     await updateSheet(rowNumber, updates);
     console.log(`✅ Updated row ${rowNumber} for issue ${originalSummary}`);
   },
-  { connection }
+  {
+    connection,
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 86400, count: 100 }
+  }
 );
 
 // Helper: convert column index to letter
