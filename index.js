@@ -25,8 +25,20 @@ const connection = {
   maxRetriesPerRequest: null
 };
 
-// Queue
-const updateQueue = new Queue("jira-flow-b", { connection });
+// ✅ Queue with job cleanup to prevent Redis OOM
+const updateQueue = new Queue("jira-flow-b", {
+  connection,
+  defaultJobOptions: {
+    removeOnComplete: {
+      age: 1800, // 30 minutes
+      count: 500
+    },
+    removeOnFail: {
+      age: 3600, // 1 hour
+      count: 100
+    }
+  }
+});
 
 // Helper: clean field value
 function getCleanValue(fieldId, rawValue) {
@@ -63,7 +75,7 @@ app.post("/jira-flow-b", async (req, res) => {
   }
 });
 
-// Worker: process jobs
+// Worker: process jobs and auto-clean memory
 new Worker(
   "jira-flow-b",
   async job => {
@@ -117,8 +129,14 @@ new Worker(
   },
   {
     connection,
-    removeOnComplete: { age: 3600, count: 1000 },
-    removeOnFail: { age: 86400, count: 100 }
+    removeOnComplete: {
+      age: 1800,
+      count: 500
+    },
+    removeOnFail: {
+      age: 3600,
+      count: 100
+    }
   }
 );
 
